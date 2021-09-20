@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+
+import re
+import sys
+import argparse
+import time
+import os
+import tempfile
+import subprocess
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="""
+            Searches for local git repos containing Go modules, updates a
+            specified Go module dependency to a particular version, then raises
+            a PR with that change.
+        """
+    )
+    parser.add_argument("--module-name", dest="module_name", required=True)
+    parser.add_argument("--module-version", dest="module_version", required=True)
+    parser.add_argument(
+        "--search-root", dest="search_root", default=os.path.abspath(os.curdir)
+    )
+    parser.add_argument("--target-branch", dest="target_branch")
+    parser.add_argument("--draft", dest="draft", action="store_true")
+    parser.add_argument("-v", "--verbose", dest="verbose", action="store_true")
+    return parser.parse_args()
+
+
+def find_git_repos(root):
+    for dirpath, dirnames, filenames in os.walk(root):
+        if ".git" in dirnames:
+            dirnames.clear()  # Don't search for nested repos.
+            yield dirpath
+
+
+def dependency_version(go_mod, module_dependency_name):
+    """
+    Extracts the version of the dependency from the go.mod file, or returns
+    None if the go.mod doesn't have the given dependency. The parsing of the
+    go.mod file is line based and naive. It will not work correctly for some
+    cases.
+    """
+    with open(go_mod, "r") as f:
+        for line in f.readlines():
+            parts = [part.strip() for part in line.split(" ") if part.strip()]
+            if "module" in parts:
+                continue
+            if module_dependency_name not in parts:
+                continue
+            idx = parts.index(module_dependency_name)
+            if idx + 1 >= len(parts):
+                continue
+            return parts[idx + 1]
+    return None
+
+
+def get_remote_url(repo):
+    raw = exec(repo, ["git", "remote"])
+    remotes = raw.splitlines()
+    if len(remotes) == 0:
+        raise Exception("no remotes")
+    # TODO: There might be multiple remotes. Should we ask the user which one
+    # they want?
+    return remotes[0]
+
+
+def exec(cwd, args):
+    """
+    Executes the command made by args inside cwd. Hides standard out and
+    standard error if the command succeeds. Returns stdout.
+    """
+    proc = subprocess.run(args, cwd=cwd, text=True, capture_output=True)
+    if proc.returncode != 0:
+        print(proc.stderr, end="")
+        print(proc.stdout, end="")
+    proc.check_returncode()
+    return proc.stdout.rstrip("\n")
+
+
+def main():
+    args = parse_args()
+    repos = find_git_repos(args.search_root)
+    for repo in repos:
+        go_mod = os.path.join(repo, "go.mod")
+        if not os.path.isfile(go_mod):
+            if args.verbose:
+                print(f"skipping {repo}: no go.mod file")
+            continue
+
+        current_version = dependency_version(go_mod, args.module_name)
+        if not current_version:
+            if args.verbose:
+                print(f"skipping {repo}: dependency absent")
+            continue
+
+        if current_version == args.module_version:
+            if args.verbose:
+                print(f"skipping {repo}: already at required version")
+
+        if input(f"upgrade {repo} from {current_version}? (y to upgrade): ") != "y":
+            print(f"skipping")
+
+        with tempfile.TemporaryDirectory() as tmp_repo:
+            print("cloning... ", end="", flush=True)
+            remote_name = get_remote_url(repo)
+            remote_url = exec(repo, ["git", "remote", "get-url", remote_name])
+            exec(tmp_repo, ["git", "clone", "--depth", "1", remote_url, tmp_repo])
+            print("done")
+
+            print("upgrading module... ", end="", flush=True)
+            epoch = int(time.time())
+            branch_name = f"upgrade_{args.module_name}_to_{args.module_version}_{epoch}"
+            branch_name = re.sub(r"[^.a-zA-Z0-9]", "_", branch_name)
+            exec(tmp_repo, ["git", "checkout", "-b", branch_name])
+            exec(tmp_repo, ["go", "get", f"{args.module_name}@{args.module_version}"])
+            exec(tmp_repo, ["go", "mod", "vendor"])
+            exec(tmp_repo, ["git", "add", "--all"])
+            commit_message = f"Upgrade {args.module_name} to {args.module_version}"
+            exec(tmp_repo, ["git", "commit", "--message", commit_message])
+            print("done")
+
+            print("pushing branch... ", end="", flush=True)
+            exec(tmp_repo, ["git", "push", "-u", "origin", branch_name])
+            print("done")
+
+            print("raising PR... ", end="", flush=True)
+            pr_message = f"""
+            Upgrade {os.path.basename(args.module_name)} to {args.module_version}
+
+            This PR was automatically created by {os.path.basename(sys.argv[0])}.
+
+            Upgraded module: {args.module_name}
+            Upgraded version: {args.module_version}
+            """
+            pr_message = "\n".join(line.lstrip() for line in pr_message.splitlines())
+            hub_args = ["hub", "pull-request", "--message", pr_message, "--browse"]
+            if args.target_branch:
+                hub_args.extend(["--base", args.target_branch])
+            if args.draft:
+                hub_args.append("--draft")
+            exec(tmp_repo, hub_args)
+            print("done")
+            print(f"{repo} upgrade complete")
+
+
+if __name__ == "__main__":
+    main()
