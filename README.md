@@ -69,6 +69,18 @@ Optionally, you can also provide:
 - A target branch, which is the branch that the PR should merge into (defaults
   to the default branch of the repo, usually `master` or `main`).
 
+
+For example:
+
+```
+$ upgrade-go-module \
+	--module-name github.com/peterstace/simplefeatures \
+	--module-version v0.32.0 \
+	--search-root ~/go
+	--draft \
+	--target-branch qa
+```
+
 ## Goals
 
 - To automated the manual workflow involved when upgrading a Go module
