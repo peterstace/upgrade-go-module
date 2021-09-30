@@ -98,9 +98,11 @@ def main():
         if current_version == args.module_version:
             if args.verbose:
                 print(f"skipping {repo}: already at required version")
+            continue
 
         if input(f"upgrade {repo} from {current_version}? (y to upgrade): ") != "y":
             print(f"skipping")
+            continue
 
         with tempfile.TemporaryDirectory() as tmp_repo:
             print("cloning... ", end="", flush=True)
