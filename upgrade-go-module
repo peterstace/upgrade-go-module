@@ -145,9 +145,11 @@ def main():
             pr_message = f"""
             Upgrade {os.path.basename(args.module_name)} to {args.module_version}
 
-            This PR was automatically created by {os.path.basename(sys.argv[0])}.
+            This PR was automatically created by
+            [upgrade-go-module](https://github.com/peterstace/upgrade-go-module).
 
             Upgraded module: {args.module_name}
+            Current version: {current_version}
             Upgraded version: {args.module_version}
             """
             pr_message = "\n".join(line.lstrip() for line in pr_message.splitlines())
