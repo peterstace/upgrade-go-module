@@ -79,15 +79,6 @@ def exec(cwd, args):
     return proc.stdout.rstrip("\n")
 
 
-def exec_with_live_out(cwd, args):
-    """
-    Executes the command made by args inside cwd. Displays standard out and
-    standard error live as the command executes.
-    """
-    proc = subprocess.run(args, cwd=cwd, text=True)
-    proc.check_returncode()
-
-
 def main():
     if "GITHUB_TOKEN" not in os.environ:
         print("GITHUB_TOKEN not set (required for raising PRs)")
@@ -158,7 +149,7 @@ def main():
                 hub_args.extend(["--base", args.target_branch])
             if args.draft:
                 hub_args.append("--draft")
-            exec_with_live_out(tmp_repo, hub_args)
+            subprocess.run(hub_args, cwd=tmp_repo, text=True, check=True)
             print("done")
             print(f"{repo} upgrade complete")
 

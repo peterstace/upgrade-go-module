@@ -59,6 +59,9 @@ optional arguments:
 To invoke the script, you at least need to provide the name of the module
 dependency you want to upgrade and the version you want upgrade it to.
 
+You also need to set `GITHUB_TOKEN` to an OAuth token for GitHub API requests.
+This is used by `hub` to raise PRs automatically.
+
 Optionally, you can also provide:
 
 - A search root, which will tell the script where to look for git repos. If not
