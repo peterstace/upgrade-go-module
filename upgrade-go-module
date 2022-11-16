@@ -123,6 +123,7 @@ def main():
             exec(tmp_repo, ["go", "get", f"{args.module_name}@{args.module_version}"])
             if os.path.isdir(os.path.join(tmp_repo, "vendor")):
                 exec(tmp_repo, ["go", "mod", "vendor"])
+            exec(tmp_repo, ["go", "mod", "tidy"])
             exec(tmp_repo, ["git", "add", "--all"])
             commit_message = f"Upgrade {args.module_name} to {args.module_version}"
             exec(tmp_repo, ["git", "commit", "--message", commit_message])
