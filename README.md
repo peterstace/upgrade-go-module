@@ -42,7 +42,7 @@ It has a few runtime dependencies:
 ## Example Usage
 
 ```
-usage: upgrade-go-module [-h] --module-name MODULE_NAME --module-version MODULE_VERSION [--search-root SEARCH_ROOT] [--target-branch TARGET_BRANCH] [--draft] [-v]
+usage: upgrade-go-module [-h] --module-name MODULE_NAME --module-version MODULE_VERSION [--search-root SEARCH_ROOT] [--target-branch TARGET_BRANCH] [--reference REFERENCE] [--draft] [-v]
 
 Searches for local git repos containing Go modules, updates a specified Go module dependency to a particular version, then raises a PR with that change.
 
@@ -52,6 +52,7 @@ optional arguments:
   --module-version MODULE_VERSION
   --search-root SEARCH_ROOT
   --target-branch TARGET_BRANCH
+  --reference REFERENCE
   --draft
   -v, --verbose
 ```
@@ -72,6 +73,9 @@ Optionally, you can also provide:
 - A target branch, which is the branch that the PR should merge into (defaults
   to the default branch of the repo, usually `master` or `main`).
 
+- A reference, which is an opaque string to include in the PR description. This
+  can contain anything, but be useful for referencing (for example) a Github or
+  Jira issue.
 
 For example:
 
@@ -79,7 +83,8 @@ For example:
 $ upgrade-go-module \
 	--module-name github.com/peterstace/simplefeatures \
 	--module-version v0.32.0 \
-	--search-root ~/go
+	--search-root ~/go \
+	--reference https://company.atlassian.net/browse/PROJ-42 \
 	--draft \
 	--target-branch qa
 ```

@@ -23,6 +23,7 @@ def parse_args():
         "--search-root", dest="search_root", default=os.path.abspath(os.curdir)
     )
     parser.add_argument("--target-branch", dest="target_branch")
+    parser.add_argument("--reference", dest="reference")
     parser.add_argument("--draft", dest="draft", action="store_true")
     parser.add_argument("-v", "--verbose", dest="verbose", action="store_true")
     return parser.parse_args()
@@ -80,11 +81,10 @@ def exec(cwd, args):
 
 
 def main():
+    args = parse_args()
     if "GITHUB_TOKEN" not in os.environ:
         print("GITHUB_TOKEN not set (required for raising PRs)")
         sys.exit(1)
-
-    args = parse_args()
     repos = find_git_repos(args.search_root)
     for repo in repos:
         go_mod = os.path.join(repo, "go.mod")
@@ -143,6 +143,7 @@ def main():
             Upgraded module: {args.module_name}
             Current version: {current_version}
             Upgraded version: {args.module_version}
+            Reference: {args.reference or "N/A"}
             """
             pr_message = "\n".join(line.lstrip() for line in pr_message.splitlines())
             hub_args = ["hub", "pull-request", "--message", pr_message, "--browse"]
