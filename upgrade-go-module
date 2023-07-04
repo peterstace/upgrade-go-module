@@ -121,6 +121,7 @@ def main():
             branch_name = re.sub(r"[^.a-zA-Z0-9]", "_", branch_name)
             exec(tmp_repo, ["git", "checkout", "-b", branch_name])
             exec(tmp_repo, ["go", "get", f"{args.module_name}@{args.module_version}"])
+            exec(tmp_repo, ["go", "mod", "tidy"])
             if os.path.isdir(os.path.join(tmp_repo, "vendor")):
                 exec(tmp_repo, ["go", "mod", "vendor"])
             exec(tmp_repo, ["go", "mod", "tidy"])
