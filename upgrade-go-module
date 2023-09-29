@@ -138,13 +138,16 @@ def main():
             pr_message = f"""
             Upgrade {os.path.basename(args.module_name)} to {args.module_version}
 
-            This PR was automatically created by
-            [upgrade-go-module](https://github.com/peterstace/upgrade-go-module).
+            This PR was automatically created by [upgrade-go-module][1].
 
-            Upgraded module: {args.module_name}
-            Current version: {current_version}
-            Upgraded version: {args.module_version}
-            Reference: {args.reference or "N/A"}
+            [1]: https://github.com/peterstace/upgrade-go-module
+
+            |                  |                           |
+            | ---              | ---                       |
+            | Upgraded module  | `{args.module_name}`      |
+            | Current version  | `{current_version}`       |
+            | Upgraded version | `{args.module_version}`   |
+            | Reference        | {args.reference or "N/A"} |
             """
             pr_message = "\n".join(line.lstrip() for line in pr_message.splitlines())
             hub_args = ["hub", "pull-request", "--message", pr_message, "--browse"]
