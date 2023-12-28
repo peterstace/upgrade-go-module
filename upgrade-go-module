@@ -115,6 +115,11 @@ def main():
             exec(tmp_repo, ["git", "clone", "--depth", "1", remote_url, tmp_repo])
             print("done")
 
+            # Update current version, in case the freshly cloned repo has a
+            # newer version compared to the one we found earlier.
+            go_mod = os.path.join(tmp_repo, "go.mod")
+            current_version = dependency_version(go_mod, args.module_name)
+
             print("upgrading module... ", end="", flush=True)
             epoch = int(time.time())
             branch_name = f"upgrade_{args.module_name}_to_{args.module_version}_{epoch}"
