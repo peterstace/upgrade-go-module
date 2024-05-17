@@ -82,9 +82,6 @@ def exec(cwd, args):
 
 def main():
     args = parse_args()
-    if "GITHUB_TOKEN" not in os.environ:
-        print("GITHUB_TOKEN not set (required for raising PRs)")
-        sys.exit(1)
     repos = find_git_repos(args.search_root)
     for repo in repos:
         go_mod = os.path.join(repo, "go.mod")
