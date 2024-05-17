@@ -108,7 +108,7 @@ def main():
             print(f"skipping")
             continue
 
-        with tempfile.TemporaryDirectory() as tmp_repo:
+        with tempfile.TemporaryDirectory(prefix="upgrade-go-module") as tmp_repo:
             print("cloning... ", end="", flush=True)
             remote_name = get_remote_url(repo)
             remote_url = exec(repo, ["git", "remote", "get-url", remote_name])
