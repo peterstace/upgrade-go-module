@@ -37,7 +37,7 @@ It has a few runtime dependencies:
 
 - `git`, go creating branches, pushing changes etc.
 - `go`, for upgrading module dependencies.
-- [`hub`](https://github.com/github/hub) for raising PRs.
+- [`gh`](https://github.com/cli/cli) for raising PRs.
 
 ## Example Usage
 
@@ -59,9 +59,6 @@ optional arguments:
 
 To invoke the script, you at least need to provide the name of the module
 dependency you want to upgrade and the version you want upgrade it to.
-
-You also need to set `GITHUB_TOKEN` to an OAuth token for GitHub API requests.
-This is used by `hub` to raise PRs automatically.
 
 Optionally, you can also provide:
 
@@ -107,7 +104,7 @@ $ upgrade-go-module \
 ### Why use `subprocess`?
 
 The script uses the Python `subprocess` module for shelling out to `git`, `go`,
-and `hub`. An alternative could have been to use libraries like `gitpython` or
+and `gh`. An alternative could have been to use libraries like `gitpython` or
 `pygithub`. There is tradeoff though: by making use of runtime command
 dependencies rather than runtime Python library dependencies, the script is
 much easier for users (so setup required).

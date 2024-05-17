@@ -112,7 +112,7 @@ def main():
             print("cloning... ", end="", flush=True)
             remote_name = get_remote_url(repo)
             remote_url = exec(repo, ["git", "remote", "get-url", remote_name])
-            exec(tmp_repo, ["git", "clone", "--depth", "1", remote_url, tmp_repo])
+            exec(tmp_repo, ["git", "clone", remote_url, tmp_repo])
             print("done")
 
             # Update current version, in case the freshly cloned repo has a
@@ -140,9 +140,8 @@ def main():
             print("done")
 
             print("raising PR... ", end="", flush=True)
-            pr_message = f"""
-            Upgrade {os.path.basename(args.module_name)} to {args.module_version}
-
+            pr_title = f"Upgrade {os.path.basename(args.module_name)} to {args.module_version}"
+            pr_body = f"""
             This PR was automatically created by [upgrade-go-module][1].
 
             [1]: https://github.com/peterstace/upgrade-go-module
@@ -154,14 +153,20 @@ def main():
             | Upgraded version | `{args.module_version}`   |
             | Reference        | {args.reference or "N/A"} |
             """
-            pr_message = "\n".join(line.lstrip() for line in pr_message.splitlines())
-            hub_args = ["hub", "pull-request", "--message", pr_message, "--browse"]
+            pr_body = "\n".join(line.lstrip() for line in pr_body.splitlines())
+            gh_args = ["gh", "pr", "create", "--body", pr_body, "--title", pr_title]
             if args.target_branch:
-                hub_args.extend(["--base", args.target_branch])
+                gh_args.extend(["--base", args.target_branch])
             if args.draft:
-                hub_args.append("--draft")
-            subprocess.run(hub_args, cwd=tmp_repo, text=True, check=True)
+                gh_args.append("--draft")
+            p = subprocess.run(gh_args, cwd=tmp_repo, text=True, stdout=subprocess.PIPE, check=True)
+            pr_url = p.stdout.splitlines()[-1]
             print("done")
+
+            print("opening PR in browser... ", end="", flush=True)
+            subprocess.run(["open", pr_url])
+            print("done")
+
             print(f"{repo} upgrade complete")
 
 
