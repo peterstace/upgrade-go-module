@@ -137,7 +137,9 @@ def main():
             print("done")
 
             print("raising PR... ", end="", flush=True)
-            pr_title = f"Upgrade {os.path.basename(args.module_name)} to {args.module_version}"
+            pr_title = (
+                f"Upgrade {os.path.basename(args.module_name)} to {args.module_version}"
+            )
             pr_body = f"""
             This PR was automatically created by [upgrade-go-module][1].
 
@@ -156,7 +158,9 @@ def main():
                 gh_args.extend(["--base", args.target_branch])
             if args.draft:
                 gh_args.append("--draft")
-            p = subprocess.run(gh_args, cwd=tmp_repo, text=True, stdout=subprocess.PIPE, check=True)
+            p = subprocess.run(
+                gh_args, cwd=tmp_repo, text=True, stdout=subprocess.PIPE, check=True
+            )
             pr_url = p.stdout.splitlines()[-1]
             print("done")
 
