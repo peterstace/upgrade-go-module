@@ -69,14 +69,9 @@ def get_remote_url(repo):
 
 def exec(cwd, args):
     """
-    Executes the command made by args inside cwd. Hides standard out and
-    standard error if the command succeeds. Returns stdout.
+    Executes the command made by args inside cwd. Returns stdout.
     """
-    proc = subprocess.run(args, cwd=cwd, text=True, capture_output=True)
-    if proc.returncode != 0:
-        print(proc.stderr, end="")
-        print(proc.stdout, end="")
-    proc.check_returncode()
+    proc = subprocess.run(args, cwd=cwd, text=True, check=True, stdout=subprocess.PIPE)
     return proc.stdout.rstrip("\n")
 
 
@@ -106,7 +101,7 @@ def main():
             continue
 
         with tempfile.TemporaryDirectory(prefix="upgrade-go-module") as tmp_repo:
-            print("cloning... ", end="", flush=True)
+            print("cloning...")
             remote_name = get_remote_url(repo)
             remote_url = exec(repo, ["git", "remote", "get-url", remote_name])
             exec(tmp_repo, ["git", "clone", remote_url, tmp_repo])
@@ -117,7 +112,7 @@ def main():
             go_mod = os.path.join(tmp_repo, "go.mod")
             current_version = dependency_version(go_mod, args.module_name)
 
-            print("upgrading module... ", end="", flush=True)
+            print("upgrading module...")
             epoch = int(time.time())
             branch_name = f"upgrade_{args.module_name}_to_{args.module_version}_{epoch}"
             branch_name = re.sub(r"[^.a-zA-Z0-9]", "_", branch_name)
@@ -132,11 +127,11 @@ def main():
             exec(tmp_repo, ["git", "commit", "--message", commit_message])
             print("done")
 
-            print("pushing branch... ", end="", flush=True)
+            print("pushing branch...")
             exec(tmp_repo, ["git", "push", "-u", "origin", branch_name])
             print("done")
 
-            print("raising PR... ", end="", flush=True)
+            print("raising PR...")
             pr_title = (
                 f"Upgrade {os.path.basename(args.module_name)} to {args.module_version}"
             )
@@ -164,7 +159,7 @@ def main():
             pr_url = p.stdout.splitlines()[-1]
             print("done")
 
-            print("opening PR in browser... ", end="", flush=True)
+            print("opening PR in browser...")
             subprocess.run(["open", pr_url])
             print("done")
 
