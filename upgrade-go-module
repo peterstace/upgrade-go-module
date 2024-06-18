@@ -172,9 +172,7 @@ def main():
 
 def maybe_skip_noop_change(repo):
     args = ["git", "status", "--porcelain"]
-    proc = subprocess.run(
-        args, text=True, cwd=repo, check=True, stdout=subprocess.PIPE
-    )
+    proc = subprocess.run(args, text=True, cwd=repo, check=True, stdout=subprocess.PIPE)
 
     ALLOWED = ("go.mod", "go.sum", "vendor/modules.txt")
     for line in proc.stdout.splitlines():
