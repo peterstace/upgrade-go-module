@@ -76,7 +76,7 @@ def process_repo(repo, args):
     ):
         raise SkipRepo("user skipped")
 
-    with tempfile.TemporaryDirectory(prefix="upgrade-go-module") as tmp_repo:
+    with tempfile.TemporaryDirectory(prefix="upgrade-go-module-") as tmp_repo:
         remote_name = get_remote_url(repo)
         remote_url = exec(repo, ["git", "remote", "get-url", remote_name])
         exec(tmp_repo, ["git", "clone", remote_url, tmp_repo])
