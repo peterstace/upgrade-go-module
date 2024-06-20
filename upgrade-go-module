@@ -41,7 +41,6 @@ def parse_args():
     parser.add_argument("--target-branch", dest="target_branch")
     parser.add_argument("--reference", dest="reference")
     parser.add_argument("--draft", dest="draft", action="store_true")
-    parser.add_argument("-v", "--verbose", dest="verbose", action="store_true")
     return parser.parse_args()
 
 
