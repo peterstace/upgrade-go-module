@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-import re
-import sys
 import argparse
-import time
+import json
 import os
-import tempfile
+import re
 import subprocess
+import sys
+import tempfile
+import time
 
 
 def main():
@@ -137,21 +138,18 @@ def process_repo(repo, args):
 def dependency_version(go_mod, module_dependency_name):
     """
     Extracts the version of the dependency from the go.mod file, or returns
-    None if the go.mod doesn't have the given dependency. The parsing of the
-    go.mod file is line based and naive. It will not work correctly for some
-    cases.
+    None if the go.mod doesn't have the given dependency.
     """
-    with open(go_mod, "r") as f:
-        for line in f.readlines():
-            parts = [part.strip() for part in line.split(" ") if part.strip()]
-            if "module" in parts:
-                continue
-            if module_dependency_name not in parts:
-                continue
-            idx = parts.index(module_dependency_name)
-            if idx + 1 >= len(parts):
-                continue
-            return parts[idx + 1]
+    dir = os.path.dirname(go_mod)
+    args = ["go", "mod", "edit", "-json"]
+    p = subprocess.run(args, cwd=dir, text=True, stdout=subprocess.PIPE)
+    data = json.loads(p.stdout)
+    require = data["Require"]
+    if not require:
+        return None
+    for dep in require:
+        if dep["Path"] == module_dependency_name:
+            return dep["Version"]
     return None
 
 
