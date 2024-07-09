@@ -47,6 +47,7 @@ def parse_args():
 
 def find_git_repos(root):
     for dirpath, dirnames, filenames in os.walk(root):
+        dirnames.sort()
         if ".git" in dirnames:
             dirnames.clear()  # Don't search for nested repos.
             yield dirpath
