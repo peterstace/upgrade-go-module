@@ -42,6 +42,8 @@ def parse_args():
     parser.add_argument("--target-branch", dest="target_branch")
     parser.add_argument("--reference", dest="reference")
     parser.add_argument("--draft", dest="draft", action="store_true")
+    parser.add_argument("--upgrade-all", dest="upgrade_all", action="store_true")
+    parser.add_argument("--always-skip-if-no-change", dest="always_skip_if_no_change", action="store_true")
     return parser.parse_args()
 
 
@@ -69,13 +71,7 @@ def process_repo(repo, args):
     if current_version == args.module_version:
         raise SkipRepo("already at required version")
 
-    if (
-        input(
-            f"upgrade from {current_version} to {args.module_version}? (y to upgrade): "
-        )
-        != "y"
-    ):
-        raise SkipRepo("user skipped")
+    prompt_upgrade_repo(current_version, args)
 
     with tempfile.TemporaryDirectory(prefix="upgrade-go-module-") as tmp_repo:
         remote_name = get_remote_url(repo)
@@ -97,7 +93,7 @@ def process_repo(repo, args):
             exec(tmp_repo, ["go", "mod", "vendor"])
         exec(tmp_repo, ["go", "mod", "tidy"])
 
-        maybe_skip_noop_change(tmp_repo)
+        maybe_skip_noop_change(tmp_repo, args.always_skip_if_no_change)
 
         exec(tmp_repo, ["git", "add", "--all"])
         commit_message = f"Upgrade {args.module_name} to {args.module_version}"
@@ -154,6 +150,14 @@ def dependency_version(go_mod, module_dependency_name):
     return None
 
 
+def prompt_upgrade_repo(current_version, args):
+    if args.upgrade_all:
+        return
+    msg = f"upgrade from {current_version} to {args.module_version}? (y to upgrade): "
+    if input(msg) != "y":
+        raise SkipRepo("user skipped")
+
+
 def get_remote_url(repo):
     raw = exec(repo, ["git", "remote"])
     remotes = raw.splitlines()
@@ -172,7 +176,7 @@ def exec(cwd, args):
     return proc.stdout.rstrip("\n")
 
 
-def maybe_skip_noop_change(repo):
+def maybe_skip_noop_change(repo, always_skip_if_no_change):
     args = ["git", "status", "--porcelain"]
     proc = subprocess.run(args, text=True, cwd=repo, check=True, stdout=subprocess.PIPE)
 
@@ -181,6 +185,8 @@ def maybe_skip_noop_change(repo):
         if line not in (f" M {f}" for f in ALLOWED):
             return False
 
+    if always_skip_if_no_change:
+        raise SkipRepo("noop change (always skipped)")
     msg = f"Update in {repo} only changes {ALLOWED}. Continue anyway? (y to continue): "
     if input(msg) != "y":
         raise SkipRepo("noop change (user skipped)")
