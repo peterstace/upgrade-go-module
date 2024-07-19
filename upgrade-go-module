@@ -187,7 +187,7 @@ def maybe_skip_noop_change(repo, always_skip_if_no_change):
 
     if always_skip_if_no_change:
         raise SkipRepo("noop change (always skipped)")
-    msg = f"Update in {repo} only changes {ALLOWED}. Continue anyway? (y to continue): "
+    msg = f"Update in {repo} only changes {ALLOWED}. Upgrade anyway? (y to continue): "
     if input(msg) != "y":
         raise SkipRepo("noop change (user skipped)")
 
