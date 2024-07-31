@@ -43,7 +43,11 @@ def parse_args():
     parser.add_argument("--reference", dest="reference")
     parser.add_argument("--draft", dest="draft", action="store_true")
     parser.add_argument("--upgrade-all", dest="upgrade_all", action="store_true")
-    parser.add_argument("--always-skip-if-no-change", dest="always_skip_if_no_change", action="store_true")
+    parser.add_argument(
+        "--always-skip-if-no-change",
+        dest="always_skip_if_no_change",
+        action="store_true",
+    )
     return parser.parse_args()
 
 
@@ -153,8 +157,8 @@ def dependency_version(go_mod, module_dependency_name):
 def prompt_upgrade_repo(current_version, args):
     if args.upgrade_all:
         return
-    msg = f"upgrade from {current_version} to {args.module_version}? (y to upgrade): "
-    if input(msg) != "y":
+    msg = f"upgrade from {current_version} to {args.module_version}?"
+    if not yes_no(msg):
         raise SkipRepo("user skipped")
 
 
@@ -187,9 +191,22 @@ def maybe_skip_noop_change(repo, always_skip_if_no_change):
 
     if always_skip_if_no_change:
         raise SkipRepo("noop change (always skipped)")
-    msg = f"Update in {repo} only changes {ALLOWED}. Upgrade anyway? (y to continue): "
-    if input(msg) != "y":
+    msg = f"Update in {repo} only changes {ALLOWED}. Upgrade anyway?"
+    if not yes_no(msg):
         raise SkipRepo("noop change (user skipped)")
+
+
+def yes_no(prompt):
+    return fzf(prompt, ["yes", "no"]) == "yes"
+
+
+def fzf(prompt, choices):
+    if not prompt.endswith(" "):
+        prompt = prompt + " "
+    args = ["fzf", "--prompt", prompt, "--height", "~100%"]
+    input = "\n".join(choices)
+    p = subprocess.run(args, text=True, input=input, stdout=subprocess.PIPE, check=True)
+    return p.stdout.strip()
 
 
 if __name__ == "__main__":
