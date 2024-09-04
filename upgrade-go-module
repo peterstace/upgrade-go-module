@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Generator
 import argparse
 import json
 import os
@@ -10,7 +13,7 @@ import tempfile
 import time
 
 
-def main():
+def main() -> None:
     args = parse_args()
     repos = find_git_repos(args.search_root)
     for repo in repos:
@@ -25,8 +28,18 @@ def main():
 BLUE = "\033[34m"
 RESET = "\033[0m"
 
+@dataclass
+class Args:
+    module_name: str
+    module_version: str
+    search_root: Path
+    target_branch: str
+    reference: str
+    draft: bool
+    upgrade_all: bool
+    always_skip_if_no_change: bool
 
-def parse_args():
+def parse_args() -> Args:
     parser = argparse.ArgumentParser(
         description="""
             Searches for local git repos containing Go modules, updates a
@@ -48,23 +61,33 @@ def parse_args():
         dest="always_skip_if_no_change",
         action="store_true",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    return Args(
+        module_name=args.module_name,
+        module_version=args.module_version,
+        search_root=args.search_root,
+        target_branch=args.target_branch,
+        reference=args.reference,
+        draft=args.draft,
+        upgrade_all=args.upgrade_all,
+        always_skip_if_no_change=args.always_skip_if_no_change,
+    )
 
 
-def find_git_repos(root):
+def find_git_repos(root: Path) -> Generator[Path, None, None]:
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames.sort()
         if ".git" in dirnames:
             dirnames.clear()  # Don't search for nested repos.
-            yield dirpath
+            yield Path(dirpath)
 
 
 class SkipRepo(Exception):
     pass
 
 
-def process_repo(repo, args):
-    go_mod = os.path.join(repo, "go.mod")
+def process_repo(repo: Path, args: Args) -> None:
+    go_mod = repo / "go.mod"
     if not os.path.isfile(go_mod):
         raise SkipRepo("no go.mod file")
 
@@ -77,14 +100,15 @@ def process_repo(repo, args):
 
     prompt_upgrade_repo(current_version, args)
 
-    with tempfile.TemporaryDirectory(prefix="upgrade-go-module-") as tmp_repo:
+    with tempfile.TemporaryDirectory(prefix="upgrade-go-module-") as tmp_repo_str:
+        tmp_repo = Path(tmp_repo_str)
         remote_name = get_remote_url(repo)
         remote_url = exec(repo, ["git", "remote", "get-url", remote_name])
-        exec(tmp_repo, ["git", "clone", remote_url, tmp_repo])
+        exec(tmp_repo, ["git", "clone", remote_url, str(tmp_repo)])
 
         # Update current version, in case the freshly cloned repo has a
         # newer version compared to the one we found earlier.
-        go_mod = os.path.join(tmp_repo, "go.mod")
+        go_mod = tmp_repo / "go.mod"
         current_version = dependency_version(go_mod, args.module_name)
 
         epoch = int(time.time())
@@ -136,7 +160,7 @@ def process_repo(repo, args):
         print(f"{repo} upgrade complete")
 
 
-def dependency_version(go_mod, module_dependency_name):
+def dependency_version(go_mod: Path, module_dependency_name: str) -> str | None:
     """
     Extracts the version of the dependency from the go.mod file, or returns
     None if the go.mod doesn't have the given dependency.
@@ -150,11 +174,14 @@ def dependency_version(go_mod, module_dependency_name):
         return None
     for dep in require:
         if dep["Path"] == module_dependency_name:
-            return dep["Version"]
+            version = dep["Version"]
+            if not isinstance(version, str):
+                raise Exception(f"unexpected version type: {version}")
+            return version
     return None
 
 
-def prompt_upgrade_repo(current_version, args):
+def prompt_upgrade_repo(current_version: str, args: Args) -> None:
     if args.upgrade_all:
         return
     msg = f"upgrade from {current_version} to {args.module_version}?"
@@ -162,7 +189,7 @@ def prompt_upgrade_repo(current_version, args):
         raise SkipRepo("user skipped")
 
 
-def get_remote_url(repo):
+def get_remote_url(repo: Path) -> str:
     raw = exec(repo, ["git", "remote"])
     remotes = raw.splitlines()
     if len(remotes) == 0:
@@ -172,7 +199,7 @@ def get_remote_url(repo):
     return remotes[0]
 
 
-def exec(cwd, args):
+def exec(cwd: Path, args: list[str]) -> str:
     """
     Executes the command made by args inside cwd. Returns stdout.
     """
@@ -180,14 +207,14 @@ def exec(cwd, args):
     return proc.stdout.rstrip("\n")
 
 
-def maybe_skip_noop_change(repo, always_skip_if_no_change):
+def maybe_skip_noop_change(repo: Path, always_skip_if_no_change: bool) -> None:
     args = ["git", "status", "--porcelain"]
     proc = subprocess.run(args, text=True, cwd=repo, check=True, stdout=subprocess.PIPE)
 
     ALLOWED = ("go.mod", "go.sum", "vendor/modules.txt")
     for line in proc.stdout.splitlines():
         if line not in (f" M {f}" for f in ALLOWED):
-            return False
+            return
 
     if always_skip_if_no_change:
         raise SkipRepo("noop change (always skipped)")
@@ -196,11 +223,11 @@ def maybe_skip_noop_change(repo, always_skip_if_no_change):
         raise SkipRepo("noop change (user skipped)")
 
 
-def yes_no(prompt):
+def yes_no(prompt: str) -> bool:
     return fzf(prompt, ["yes", "no"]) == "yes"
 
 
-def fzf(prompt, choices):
+def fzf(prompt: str, choices: list[str]) -> str:
     if not prompt.endswith(" "):
         prompt = prompt + " "
     args = ["fzf", "--prompt", prompt, "--height", "~100%"]
