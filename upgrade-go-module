@@ -28,6 +28,7 @@ def main() -> None:
 BLUE = "\033[34m"
 RESET = "\033[0m"
 
+
 @dataclass
 class Args:
     module_name: str
@@ -38,6 +39,7 @@ class Args:
     draft: bool
     upgrade_all: bool
     always_skip_if_no_change: bool
+
 
 def parse_args() -> Args:
     parser = argparse.ArgumentParser(
@@ -105,15 +107,15 @@ def process_repo(repo: Path, args: Args) -> None:
         remote_name = get_remote_url(repo)
         remote_url = exec(repo, ["git", "remote", "get-url", remote_name])
         exec(tmp_repo, ["git", "clone", remote_url, str(tmp_repo)])
+        # TODO: shalow clone
 
         # Update current version, in case the freshly cloned repo has a
         # newer version compared to the one we found earlier.
         go_mod = tmp_repo / "go.mod"
         current_version = dependency_version(go_mod, args.module_name)
 
-        epoch = int(time.time())
-        branch_name = f"upgrade_{args.module_name}_to_{args.module_version}_{epoch}"
-        branch_name = re.sub(r"[^.a-zA-Z0-9]", "_", branch_name)
+        jira = extract_jira_ticket_from_reference(args.reference)
+        branch_name = build_branch_name(jira, args.module_name, args.module_version)
         exec(tmp_repo, ["git", "checkout", "-b", branch_name])
         exec(tmp_repo, ["go", "get", f"{args.module_name}@{args.module_version}"])
         exec(tmp_repo, ["go", "mod", "tidy"])
@@ -129,9 +131,7 @@ def process_repo(repo: Path, args: Args) -> None:
 
         exec(tmp_repo, ["git", "push", "-u", "origin", branch_name])
 
-        pr_title = (
-            f"Upgrade {os.path.basename(args.module_name)} to {args.module_version}"
-        )
+        pr_title = build_pr_title(jira, args.module_name, args.module_version)
         pr_body = f"""
         This PR was automatically created by [upgrade-go-module][1].
 
@@ -223,6 +223,24 @@ def maybe_skip_noop_change(repo: Path, always_skip_if_no_change: bool) -> None:
         raise SkipRepo("noop change (user skipped)")
 
 
+def build_branch_name(jira: str | None, module_name: str, module_version: str) -> str:
+    parts = []
+    if jira is not None:
+        parts.append(jira)
+    parts.extend(("upgrade", module_name, "to", module_version, str(int(time.time()))))
+    branch_name = "_".join(parts)
+    branch_name = re.sub(r"[^.a-zA-Z0-9]", "_", branch_name)
+    return branch_name
+
+
+def build_pr_title(jira: str | None, module_name: str, module_version: str) -> str:
+    parts = []
+    if jira is not None:
+        parts.append(jira)
+    parts.extend(("Upgrade", module_name, "to", module_version))
+    return " ".join(parts)
+
+
 def yes_no(prompt: str) -> bool:
     return fzf(prompt, ["yes", "no"]) == "yes"
 
@@ -234,6 +252,17 @@ def fzf(prompt: str, choices: list[str]) -> str:
     input = "\n".join(choices)
     p = subprocess.run(args, text=True, input=input, stdout=subprocess.PIPE, check=True)
     return p.stdout.strip()
+
+
+def extract_jira_ticket_from_reference(ref: str | None) -> str | None:
+    if ref is None:
+        return None
+    tix = ref.split("/")
+    if len(tix) == 0:
+        return None
+    if re.match(r"[A-Z]+-\d+", tix[-1]):
+        return tix[-1]
+    return None
 
 
 if __name__ == "__main__":
