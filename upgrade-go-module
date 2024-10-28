@@ -236,7 +236,7 @@ def build_branch_name(jira: str | None, module_name: str, module_version: str) -
 def build_pr_title(jira: str | None, module_name: str, module_version: str) -> str:
     parts = []
     if jira is not None:
-        parts.append(jira)
+        parts.append(jira + ":")
     parts.extend(("Upgrade", module_name, "to", module_version))
     return " ".join(parts)
 
