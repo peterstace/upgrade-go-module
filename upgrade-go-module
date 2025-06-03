@@ -139,7 +139,7 @@ def process_repo(repo: Path, args: Args) -> None:
             "N/A"
             if not args.references
             else "<ul>"
-            + "\n".join(["<li>" + ref + "</li>" for ref in args.references])
+            + "".join(["<li>" + ref + "</li>" for ref in args.references])
             + "</ul>"
         )
         pr_body = f"""
