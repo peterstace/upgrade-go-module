@@ -35,8 +35,9 @@ class Args:
     module_version: str
     search_root: Path
     target_branch: str
-    reference: str
+    references: list[str]
     draft: bool
+    labels: list[str]
     upgrade_all: bool
     always_skip_if_no_change: bool
 
@@ -55,8 +56,9 @@ def parse_args() -> Args:
         "--search-root", dest="search_root", default=os.path.abspath(os.curdir)
     )
     parser.add_argument("--target-branch", dest="target_branch")
-    parser.add_argument("--reference", dest="reference")
+    parser.add_argument("--reference", dest="references", action="append", default=[])
     parser.add_argument("--draft", dest="draft", action="store_true")
+    parser.add_argument("--label", dest="labels", action="append", default=[])
     parser.add_argument("--upgrade-all", dest="upgrade_all", action="store_true")
     parser.add_argument(
         "--always-skip-if-no-change",
@@ -69,8 +71,9 @@ def parse_args() -> Args:
         module_version=args.module_version,
         search_root=args.search_root,
         target_branch=args.target_branch,
-        reference=args.reference,
+        references=args.references,
         draft=args.draft,
+        labels=args.labels,
         upgrade_all=args.upgrade_all,
         always_skip_if_no_change=args.always_skip_if_no_change,
     )
@@ -114,7 +117,7 @@ def process_repo(repo: Path, args: Args) -> None:
         go_mod = tmp_repo / "go.mod"
         current_version = dependency_version(go_mod, args.module_name)
 
-        jira = extract_jira_ticket_from_reference(args.reference)
+        jira = extract_jira_ticket_from_references(args.references)
         branch_name = build_branch_name(jira, args.module_name, args.module_version)
         exec(tmp_repo, ["git", "checkout", "-b", branch_name])
         exec(tmp_repo, ["go", "get", f"{args.module_name}@{args.module_version}"])
@@ -132,20 +135,37 @@ def process_repo(repo: Path, args: Args) -> None:
         exec(tmp_repo, ["git", "push", "-u", "origin", branch_name])
 
         pr_title = build_pr_title(jira, args.module_name, args.module_version)
+        references_table_entry: str = (
+            "N/A"
+            if not args.references
+            else "<ul>"
+            + "\n".join(["<li>" + ref + "</li>" for ref in args.references])
+            + "</ul>"
+        )
         pr_body = f"""
         This PR was automatically created by [upgrade-go-module][1].
 
         [1]: https://github.com/peterstace/upgrade-go-module
 
-        |                  |                           |
-        | ---              | ---                       |
-        | Upgraded module  | `{args.module_name}`      |
-        | Current version  | `{current_version}`       |
-        | Upgraded version | `{args.module_version}`   |
-        | Reference        | {args.reference or "N/A"} |
+        |                  |                          |
+        | ---              | ---                      |
+        | Upgraded module  | `{args.module_name}`     |
+        | Current version  | `{current_version}`      |
+        | Upgraded version | `{args.module_version}`  |
+        | Reference(s)     | {references_table_entry} |
         """
         pr_body = "\n".join(line.lstrip() for line in pr_body.splitlines())
-        gh_args = ["gh", "pr", "create", "--body", pr_body, "--title", pr_title]
+        gh_args = [
+            "gh",
+            "pr",
+            "create",
+            "--body",
+            pr_body,
+            "--title",
+            pr_title,
+        ]
+        for label in args.labels:
+            gh_args.extend(["--label", label])
         if args.target_branch:
             gh_args.extend(["--base", args.target_branch])
         if args.draft:
@@ -254,9 +274,15 @@ def fzf(prompt: str, choices: list[str]) -> str:
     return p.stdout.strip()
 
 
-def extract_jira_ticket_from_reference(ref: str | None) -> str | None:
-    if ref is None:
-        return None
+def extract_jira_ticket_from_references(refs: list[str]) -> str | None:
+    for ref in refs:
+        tix = extract_jira_ticket_from_reference(ref)
+        if tix is not None:
+            return tix
+    return None
+
+
+def extract_jira_ticket_from_reference(ref: str) -> str | None:
     tix = ref.split("/")
     if len(tix) == 0:
         return None
