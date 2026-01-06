@@ -11,8 +11,11 @@ It solves two closely related user stories:
    new changes.
 
 2. As a Go developer what writes many Go programs, I want to upgrade the
-   dependencies of those programs to a specific version, so that I don't
+   dependencies of those programs to specific versions, so that I don't
    continue to use older versions.
+
+3. As a Go developer, I want to upgrade multiple module dependencies at once
+   in a single PR, so that I can efficiently manage related updates.
 
 It solves these two user stories by automating a workflow that might otherwise
 be executed manually:
@@ -42,23 +45,29 @@ It has a few runtime dependencies:
 ## Example Usage
 
 ```
-usage: upgrade-go-module [-h] --module-name MODULE_NAME --module-version MODULE_VERSION [--search-root SEARCH_ROOT] [--target-branch TARGET_BRANCH] [--reference REFERENCE] [--draft] [-v]
+usage: upgrade-go-module [-h] --module NAME@VERSION [--search-root SEARCH_ROOT]
+                         [--target-branch TARGET_BRANCH] [--reference REFERENCE]
+                         [--draft] [--label LABEL] [--upgrade-all]
+                         [--always-skip-if-no-change]
 
-Searches for local git repos containing Go modules, updates a specified Go module dependency to a particular version, then raises a PR with that change.
+Searches for local git repos containing Go modules, updates specified Go module
+dependencies to particular versions, then raises a PR with those changes.
 
 optional arguments:
   -h, --help            show this help message and exit
-  --module-name MODULE_NAME
-  --module-version MODULE_VERSION
+  --module NAME@VERSION Module to upgrade in NAME@VERSION format (can be specified multiple times)
   --search-root SEARCH_ROOT
   --target-branch TARGET_BRANCH
   --reference REFERENCE
   --draft
-  -v, --verbose
+  --label LABEL
+  --upgrade-all
+  --always-skip-if-no-change
 ```
 
-To invoke the script, you at least need to provide the name of the module
-dependency you want to upgrade and the version you want upgrade it to.
+To invoke the script, you need to provide at least one module to upgrade using
+the `--module` flag with the format `NAME@VERSION`. You can specify multiple
+modules by using the `--module` flag multiple times.
 
 Optionally, you can also provide:
 
@@ -74,16 +83,35 @@ Optionally, you can also provide:
   can contain anything, but be useful for referencing (for example) a Github or
   Jira issue.
 
-For example:
+- A label, which will be added to the created PR. Can be specified multiple times.
+
+- An upgrade-all flag, which will skip the interactive prompt for each repo.
+
+- An always-skip-if-no-change flag, which will skip repos where only go.mod,
+  go.sum, or vendor/modules.txt would change.
+
+### Single Module Example
 
 ```
 $ upgrade-go-module \
-	--module-name github.com/peterstace/simplefeatures \
-	--module-version v0.32.0 \
+	--module github.com/peterstace/simplefeatures@v0.32.0 \
 	--search-root ~/go \
 	--reference https://company.atlassian.net/browse/PROJ-42 \
 	--draft \
 	--target-branch qa
+```
+
+### Multiple Modules Example
+
+```
+$ upgrade-go-module \
+	--module github.com/peterstace/simplefeatures@v0.32.0 \
+	--module github.com/stretchr/testify@v1.8.4 \
+	--module github.com/google/uuid@v1.4.0 \
+	--search-root ~/go \
+	--reference https://company.atlassian.net/browse/PROJ-42 \
+	--label dependencies \
+	--upgrade-all
 ```
 
 ## Goals

@@ -30,9 +30,14 @@ RESET = "\033[0m"
 
 
 @dataclass
+class Module:
+    name: str
+    version: str
+
+
+@dataclass
 class Args:
-    module_name: str
-    module_version: str
+    modules: list[Module]
     search_root: Path
     target_branch: str
     references: list[str]
@@ -45,13 +50,19 @@ class Args:
 def parse_args() -> Args:
     parser = argparse.ArgumentParser(
         description="""
-            Searches for local git repos containing Go modules, updates a
-            specified Go module dependency to a particular version, then raises
-            a PR with that change.
+            Searches for local git repos containing Go modules, updates
+            specified Go module dependencies to particular versions, then raises
+            a PR with those changes.
         """
     )
-    parser.add_argument("--module-name", dest="module_name", required=True)
-    parser.add_argument("--module-version", dest="module_version", required=True)
+    parser.add_argument(
+        "--module",
+        dest="modules",
+        action="append",
+        required=True,
+        metavar="NAME@VERSION",
+        help="Module to upgrade in NAME@VERSION format (can be specified multiple times)",
+    )
     parser.add_argument(
         "--search-root", dest="search_root", default=os.path.abspath(os.curdir)
     )
@@ -66,9 +77,16 @@ def parse_args() -> Args:
         action="store_true",
     )
     args = parser.parse_args()
+
+    modules = []
+    for module_spec in args.modules:
+        parts = module_spec.split("@")
+        if len(parts) != 2:
+            parser.error(f"Invalid module specification '{module_spec}'. Expected format: NAME@VERSION")
+        modules.append(Module(name=parts[0], version=parts[1]))
+
     return Args(
-        module_name=args.module_name,
-        module_version=args.module_version,
+        modules=modules,
         search_root=args.search_root,
         target_branch=args.target_branch,
         references=args.references,
@@ -96,14 +114,21 @@ def process_repo(repo: Path, args: Args) -> None:
     if not os.path.isfile(go_mod):
         raise SkipRepo("no go.mod file")
 
-    current_version = dependency_version(go_mod, args.module_name)
-    if not current_version:
-        raise SkipRepo("dependency absent")
+    modules_to_upgrade = []
+    for module in args.modules:
+        current_version = dependency_version(go_mod, module.name)
+        if not current_version:
+            continue
+        if current_version == module.version:
+             continue
+        modules_to_upgrade.append((module, current_version))
 
-    if current_version == args.module_version:
-        raise SkipRepo("already at required version")
+    if not modules_to_upgrade:
+        if len(args.modules) == 1:
+            raise SkipRepo("dependency absent or already at required version")
+        raise SkipRepo("all dependencies absent or already at required versions")
 
-    prompt_upgrade_repo(current_version, args)
+    prompt_upgrade_repo(modules_to_upgrade, args)
 
     with tempfile.TemporaryDirectory(prefix="upgrade-go-module-") as tmp_repo_str:
         tmp_repo = Path(tmp_repo_str)
@@ -112,15 +137,26 @@ def process_repo(repo: Path, args: Args) -> None:
         exec(tmp_repo, ["git", "clone", remote_url, str(tmp_repo)])
         # TODO: shalow clone
 
-        # Update current version, in case the freshly cloned repo has a
-        # newer version compared to the one we found earlier.
+        # Update modules_to_upgrade in case the freshly cloned repo has newer
+        # versions compared to the ones we found earlier.
         go_mod = tmp_repo / "go.mod"
-        current_version = dependency_version(go_mod, args.module_name)
+        updated_modules_to_upgrade = []
+        for module, _ in modules_to_upgrade:
+            current_version = dependency_version(go_mod, module.name)
+            if current_version and current_version != module.version:
+                updated_modules_to_upgrade.append((module, current_version))
+        modules_to_upgrade = updated_modules_to_upgrade
+
+        if not modules_to_upgrade:
+            raise SkipRepo("all dependencies already at required versions in fresh clone")
 
         jira = extract_jira_ticket_from_references(args.references)
-        branch_name = build_branch_name(jira, args.module_name, args.module_version)
+        branch_name = build_branch_name(jira, modules_to_upgrade)
         exec(tmp_repo, ["git", "checkout", "-b", branch_name])
-        exec(tmp_repo, ["go", "get", f"{args.module_name}@{args.module_version}"])
+
+        for module, _ in modules_to_upgrade:
+            exec(tmp_repo, ["go", "get", f"{module.name}@{module.version}"])
+
         exec(tmp_repo, ["go", "mod", "tidy"])
         if os.path.isdir(os.path.join(tmp_repo, "vendor")):
             exec(tmp_repo, ["go", "mod", "vendor"])
@@ -129,12 +165,12 @@ def process_repo(repo: Path, args: Args) -> None:
         maybe_skip_noop_change(tmp_repo, args.always_skip_if_no_change)
 
         exec(tmp_repo, ["git", "add", "--all"])
-        commit_message = f"Upgrade {args.module_name} to {args.module_version}"
+        commit_message = build_commit_message(modules_to_upgrade)
         exec(tmp_repo, ["git", "commit", "--message", commit_message])
 
         exec(tmp_repo, ["git", "push", "-u", "origin", branch_name])
 
-        pr_title = build_pr_title(jira, args.module_name, args.module_version)
+        pr_title = build_pr_title(jira, modules_to_upgrade)
         references_table_entry: str = (
             "N/A"
             if not args.references
@@ -142,17 +178,22 @@ def process_repo(repo: Path, args: Args) -> None:
             + "".join(["<li>" + ref + "</li>" for ref in args.references])
             + "</ul>"
         )
+
+        module_rows = ""
+        for module, current_version in modules_to_upgrade:
+            module_rows += f"| `{module.name}` | `{current_version}` | `{module.version}` |\n"
+
         pr_body = f"""
         This PR was automatically created by [upgrade-go-module][1].
 
         [1]: https://github.com/peterstace/upgrade-go-module
 
-        |                  |                          |
-        | ---              | ---                      |
-        | Upgraded module  | `{args.module_name}`     |
-        | Current version  | `{current_version}`      |
-        | Upgraded version | `{args.module_version}`  |
-        | Reference(s)     | {references_table_entry} |
+        | Module | Current version | Upgraded version |
+        | --- | --- | --- |
+        {module_rows}
+
+        **Reference(s)**
+        {references_table_entry}
         """
         pr_body = "\n".join(line.lstrip() for line in pr_body.splitlines())
         gh_args = [
@@ -201,10 +242,15 @@ def dependency_version(go_mod: Path, module_dependency_name: str) -> str | None:
     return None
 
 
-def prompt_upgrade_repo(current_version: str, args: Args) -> None:
+def prompt_upgrade_repo(modules_to_upgrade: list[tuple[Module, str]], args: Args) -> None:
     if args.upgrade_all:
         return
-    msg = f"upgrade from {current_version} to {args.module_version}?"
+    if len(modules_to_upgrade) == 1:
+        module, current_version = modules_to_upgrade[0]
+        msg = f"upgrade {module.name} from {current_version} to {module.version}?"
+    else:
+        upgrades = ", ".join(m.name for m, cv in modules_to_upgrade)
+        msg = f"upgrade {len(modules_to_upgrade)} modules: {upgrades}?"
     if not yes_no(msg):
         raise SkipRepo("user skipped")
 
@@ -243,22 +289,41 @@ def maybe_skip_noop_change(repo: Path, always_skip_if_no_change: bool) -> None:
         raise SkipRepo("noop change (user skipped)")
 
 
-def build_branch_name(jira: str | None, module_name: str, module_version: str) -> str:
+def build_branch_name(jira: str | None, modules_to_upgrade: list[tuple[Module, str]]) -> str:
     parts = []
     if jira is not None:
         parts.append(jira)
-    parts.extend(("upgrade", module_name, "to", module_version, str(int(time.time()))))
+    if len(modules_to_upgrade) == 1:
+        module, _ = modules_to_upgrade[0]
+        parts.extend(("upgrade", module.name, "to", module.version))
+    else:
+        parts.append("upgrade_modules")
+    parts.append(str(int(time.time())))
     branch_name = "_".join(parts)
     branch_name = re.sub(r"[^.a-zA-Z0-9]", "_", branch_name)
     return branch_name
 
 
-def build_pr_title(jira: str | None, module_name: str, module_version: str) -> str:
+def build_pr_title(jira: str | None, modules_to_upgrade: list[tuple[Module, str]]) -> str:
     parts = []
     if jira is not None:
         parts.append(jira + ":")
-    parts.extend(("Upgrade", module_name, "to", module_version))
+    if len(modules_to_upgrade) == 1:
+        module, _ = modules_to_upgrade[0]
+        parts.extend(("Upgrade", module.name, "to", module.version))
+    else:
+        parts.append(f"Upgrade {len(modules_to_upgrade)} modules")
     return " ".join(parts)
+
+
+def build_commit_message(modules_to_upgrade: list[tuple[Module, str]]) -> str:
+    if len(modules_to_upgrade) == 1:
+        module, _ = modules_to_upgrade[0]
+        return f"Upgrade {module.name} to {module.version}"
+    lines = [f"Upgrade {len(modules_to_upgrade)} modules", ""]
+    for module, _ in modules_to_upgrade:
+        lines.append(f"- {module.name} to {module.version}")
+    return "\n".join(lines)
 
 
 def yes_no(prompt: str) -> bool:
